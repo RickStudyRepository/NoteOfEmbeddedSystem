@@ -2,6 +2,10 @@
 
 ## 4.1 主机Linux开发环境
 
+就是虚拟机的配置过程，这里不再赘述，详情参阅[开发环境搭建文档](./OtherDocuments/物联网教学科研平台(IMX6核心)开发环境搭建文档.pdf)
+
+实际上，还是有一些内容不在这个文件里，但是来不及整理了/捂脸，不过那些内容无关痛痒就是了
+
 10月7日
 
 ***
@@ -10,7 +14,24 @@
 
 ### 简介
 
+<img src="./Images/4.2 Bootloader简介.png" style="zoom:70%;" alt="Bootloader简介" />
 
+- BootLoader是**操作系统的启动加载程序**，是在**操作系统内核运行之前**运行的一段小程序，相对于操作系统内核来说，是一个硬件抽象层
+
+- BootLoader的主要功能是**初始化硬件设备和内存空间，调整系统的软硬件环境**，以便操作系统内核启动
+
+- BootLoader**不通用**，**依赖于硬件和具体的板级配置**，通常不同CPU的BootLoader也不同，但象U-Boot这样的BootLoader可通过简单移植支持多种CPU，如ARM和MIPS
+
+- 嵌入式系统的NandFlash中的存储内容分布
+
+    <img src="./Images/4.2 嵌入式系统的NandFlash中的存储内容分布.png" style="zoom:60%;" alt="嵌入式系统的NandFlash中的存储内容分布" />
+
+- 嵌入式系统的Bootloader类型
+
+    - `u-boot`
+    - `vivi`
+    - `blob`
+    - `redboot`
 
 #### BootLoader的存储
 
@@ -29,10 +50,10 @@
 
 ### 工作流程
 
-一般分为两个阶段执行：
+嵌入式系统的Bootloader一般分为两个阶段执行：
 
 1. stage1为汇编语言编写，**初始化硬件**
-2. stage2为C语言编写，**为操作系统做准备**
+2. stage2为C语言编写，**为操作系统运行做准备**
 
 #### BootLoader的生命周期
 
@@ -44,34 +65,64 @@ A[初始化硬件] --> B[设置启动参数] --> C[跳转到操作系统首地�
 
 ##### stage1
 
-```mermaid
-graph LR
-A[stage1] --> B[硬件初始化] --> 屏蔽中断 --> 设置时钟频率 --> RAM初始化 --> LED初始化 --> 关闭cache
-A --> C[为stage2准备内存] --> 确定内存大小 --> 准备内存空间 --> 测试内存空间
-A --> D[stage2复制到内存]
-A --> E[设置堆栈]
-A --> F[stage2入口点进入]
-```
+<img src="./Images/4.2 Bootloader stage1.png" style="zoom:60%;" alt="Bootloader stage1" />
 
-- 弹簧床编程方式：todo
+- `trampoline`(弹簧床)编程方式
+
+    - 汇编小程序`trampoline`作为**stage2的执行入口点**
+
+    - 在`trampoline`中用CPU跳转指令跳入`main()`函数中去执行
+
+    - 当`main()`函数返回时，CPU执行路径显然再次回到`trampoline`程序
+
+    - 用`trampoline`小程序来作为`main()`函数的外部包裹(`external wrapper`)
+
+    - `blob`的`trampoline`程序示例
+
+        ```assembly
+        .text
+        .globl _trampoline
+        _trampoline:
+        bl main
+        /* if main ever returns we just call it again */
+        b _trampoline
+        ```
+
+    - `vivi`的`trampoline `程序示例
+
+        ```assembly
+        @ get read to call C functions
+        ldr sp,DW_STACK_START @ setup stack pointer
+        mov fp,#0 @ no previous frame,so fp=0
+        mov a2,#0 @ set argv to NULL
+        bl main @ call main;
+        mov pc,#FLASH_BASE@ otherwise,reboot
+        ```
 
 ##### stage2
 
-todo
+<img src="./Images/4.2 Bootloader stage2.png" style="zoom:60%;" alt="Bootloader stage2" />
 
 ##### BootLoader的2种操作模式
 
+Bootloader通常同时支持这两种工作模式，允许用户在这两种工作模式之间进行切换，一般在**启动时会延时等待按键输入进行切换到命令模式**，否则继续启动操作系统
+
 1. 启动加载（自主Autonomous）模式
+
+    直接启动操作系统的模式，是`Bootloader`的**正常工作模式**，没有外界输入时的缺省模式
+
 2. 命令模式
+
+    使用Bootloader命令的模式，部分嵌入式系统提供从主机向目标机下载映像文件（如内核和根文件系统）的命令，**本试验箱（我们的试验箱）则不支持相关命令**
 
 ### U-Boot（Universal BootLoader）
 
 #### 基本介绍
 
-- 占位
-- 占位
-- 占位
-- 占位
+- 德国DENX软件工程中心的Wolfgang Denk开发，遵循 GPL条款的开放源码项目，全称`Universal Bootloader`
+- **其源码目录、编译形式与Linux内核很相似，是Linux内核源程序(尤其是设备驱动程序)的简化**
+- 支持嵌入式Linux/VxWorks/QNX等**操作系统**，支持PowerPC、MIPS、x86、ARM、XScale等**处理器**
+- 对PowerPC系列处理器/对Linux的支持最完善
 
 #### 主要命令
 
@@ -89,43 +140,131 @@ todo
     - 虚拟文件系统
     - 网络接口
     - 进程间通信
-- 一般在Linux系统中的/usr/src/linux-\*.\*.\*目录下就是内核源代码
+- 一般在Linux系统中的`/usr/src/linux-*.*.*`目录下就是内核源代码
 - Linux内核代码可以分为平台相关部分和平台无关部分，绝大部分代码是平台无关的
 - 依赖于硬件的代码在Linux中采用条件编译的方式区分(makefile中)
-    - ARCH=x86 台式计算机x86平台
-    - ARCH=arm 嵌入式系统arm平台
+    - `ARCH=x86` 台式计算机x86平台
+    - `ARCH=arm` 嵌入式系统arm平台
 - 嵌入式Linux开发有时要编写或移植内核中的代码，这种编程有一些限制，主要有：
-    1. 内核中没有标准C库支持
-    2. 内核中没有象用户程序那样的内存保护
-    3. 内核中不便使用浮点操作
-    4. 内核的堆栈是固定大小的，并且比较有限
-    5. 在内核中需要编程者考虑并发带来的竞争与冒险，以及同步问题
+    1. 内核中**没有标准C库支持**
+    2. 内核中**没有**像用户程序那样的**内存保护**
+    3. 内核中**不便使用浮点操作**
+    4. 内核的**堆栈是固定大小的，并且比较有限**
+    5. 在内核中**需要编程者考虑并发带来的竞争与冒险，以及同步问题**
 
 ### 4.3.1 源码目录
+
+TODO：待完善
 
 10月12日，4-3PPT8页
 
 ***
 
-
-
 ### 4.3.2 内核移植
 
-```mermaid
-graph LR
-A[嵌入式Linux内核移植]
-A --> B[体系结构CPU的移植]
-B --> E[内核已有CPU的相关支持]
-B --> F[内核没有CPU的相关支持]
-A --> C[启动相关外存NandFlash的移植]
-A --> D[标准I/O设备串口的移植]
-```
+#### 内核移植的几种情形
 
+1. 体系结构(CPU)的移植
+    1. 内核**已有**CPU的相关支持
+    2. 内核**没有**CPU的相关支持
+2. 启动相关外存(NandFlash)的移植
+3. 标准I/O设备(串口)的移植
 
+TODO：尚待完善
 
 ### 4.3.3 配置编译
 
+#### 简介
+
+- Linux配置内核常用2个不同命令中的1个
+    - `make menuconfig`：**不带图形界面**，字符型的界面，需要`libncurses(大概是这个名字)`的支持
+    - `make xconfig(gconfig)`：**带图形界面**，需要`qt4/5`的支持
+- `嵌入式Linux`内核配置通常使用第一个命令，`PC Linux`内核则通常使用第二个命令
+- 命令执行的结果是产生一个`.config`文件，**并在每个C语言文件中**加入`<linux/config.h>`，以便使所有`CONFIG_XXX`起全局作用，根据这个生成不同的内核
+
+#### 配置编译流程
+
+1. **安装内核**，释放内核源码
+2. **编译清理**，使用`make clean`命令清除原来编译内核时的`.o`文件和不必要关联
+3. **配置内核**，运行`make menuconfig`配置内核
+4. **编译内核**，运行`make`或`make zImage`编译内核
+
+#### 配置内核
+
+内核的配置选项有很多，可以使用预配置文件，也可以自行配置，选择时，最多有三种选择(按空格键进行选择)
+
+- `[*]`，将该功能编译进内核
+- `[ ]`，不将该功能编译进内核
+- `[M]`，将该功能编译成**可以在需要时动态插入到内核**中的模块
+
+#### 编译内核
+
+1. 进入源码目录
+2. 用`source`命令指定交叉编译器
+3. 编译
+    1. `make clean`
+    2. `make`
+4. 编译成功后会生成内核镜像文件`arch/arm/boot/zImage`和设备树文件`arch/arm/boot/dts/imx6dl-sabresd.dtb`，针对我们试验箱的内核
+5. `system.map`是**内核符号映射文件**，应用程序所有可以使用的符号应该在其中
+
 ### 4.3.4 配置选项
+
+#### 我们的实验平台的内核配置选项
+
+TODO：待完善
+
+#### Kconfig和Makefile
+
+在内核的源码树目录下一般都会有两个重要文件
+
+- `Kconfig`，2.4内核为`Config.in`
+- `Makefile`
+
+##### Kconfig
+
+- 分布在各目录下的`Kconfig`构成了**一个分布式的内核配置数据库**，**每个Kconfig分别描述了所属目录下源文件相关的内核配置菜单**
+- 在内核配置`make menuconfig`时，从`Kconfig`中读出配置菜单，用户配置完后保存到`.config`(在内核源码顶层目录下生成)中
+- 内核编译时，主`Makefile`调用`.config`（隐藏文件），就知道了用户对内核的配置情况
+- `Kconfig`的**作用就是对应着内核的配置菜单**。**假如要想添加新的驱动到内核的源码中，可以通过修改`Kconfig`来增加对我们驱动的配置菜单，这样就有途径选择我们的驱动**
+- `Kconfig`语法可参考`Documentation/kbuild/kconfig-language.txt`文档
+
+##### Makefile
+
+- **如果想使某个驱动被编译进内核或被内核支持，还要修改该驱动所在目录下的Makefile文件**
+- 这个Makefile文件定义了所在目录下**驱动源码在内核目录树中的编译规则**
+- 在make编译内核的时候，**内核源码目录顶层Makefile**文件会递归的连接相应**子目录下的Makefile**文件，进而对驱动程序进行编译
+- 内核的`Makefile`分为5个部分
+    - `Makefile`，最顶层的`Makefile`
+    - `.config`，内核的当前配置文档，编译时成为顶层`Makefile`的一部分
+    - `arch/$(ARCH)/Makefile`，和**体系结构相关的** `Makefile`，提供编译体系结构相关代码的信息
+    - `Makefile.*`，一些`Makefile`通用规则
+    - `kbuild`和`Makefile`，各级目录有几百个文档，根据上层Makefile的宏定义和其他编译规则，将源码编译成模块或编入内核；**顶层的**`Makefile`读取`.config`内容，总体负责编译内核和模块
+
+#### 如何增加选项
+
+例如，将驱动程序`imx6-leds.c`加入内核
+
+1. 将`imx6-leds.c`复制到内核的`drivers/char`目录，字符型设备
+
+2. 更改内核的`drivers/char`目录下的`Kconfig`，添加：
+
+    TODO：对格式有一定要求，待完善
+
+    ```Kconfig
+    config IMX6_LED_TEST
+    	bool "imx6 leds test"
+    	default y
+    	help
+    	Test Leds on imx6 board
+    ```
+
+3. 更改内核的`drivers/char`目录下的`Makefile`，添加：
+
+    ```makefile
+    obj-$(CONFIG_IMX6_LED_TEST) += imx6-leds.o
+    ```
+
+4. 通过`make menuconfig`选择`imx6 leds test`，编译内核并烧写
 
 10月14日
 
